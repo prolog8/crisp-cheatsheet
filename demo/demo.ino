@@ -212,41 +212,13 @@ bool colRect(Collision *cl, uint8_t color) {
 //*************************************************
 // Drawing
 //*************************************************
+
 void md_drawRect(float _x, float _y, float _w, float _h, int8_t color) {
-  /*  Check parameters  */
-  int16_t x = (int16_t)_x, y = (int16_t)_y, w = (int16_t)_w, h = (int16_t)_h;
-  if (x < 0) {
-    if (w <= -x) return;
-    w += x;
-    x = 0;
-  }
-  if (y < 0) {
-    if (h <= -y) return;
-    h += y;
-    y = 0;
-  }
-  if (w <= 0 || x >= WIDTH || h <= 0 || y >= HEIGHT) return;
-  if (x + w > WIDTH) w = WIDTH - x;
-  if (y + h > HEIGHT) h = HEIGHT - y;
-
-  /*  Draw a filled rectangle  */
-  uint8_t *p = arduboy.getBuffer() + x + (y / 8) * WIDTH;
-  uint8_t yOdd = y & 7, d = 0xFF << yOdd, c = getColor(color);
-  for (h += yOdd; h > 0; h -= 8, p += WIDTH - w) {
-    if (h < 8) d &= 0xFF >> (8 - h);
-    if (c == WHITE) {
-      for (uint8_t i = w; i > 0; i--, *p++ |= d) { ; }
-    } else if (c == BLACK) {
-      for (uint8_t i = w, invD = ~d; i > 0; i--, *p++ &= invD) { ; }
-    } else {
-      for (uint8_t i = w; i > 0; i--, *p++ ^= d) { ; }
-    }
-    d = 0xFF;
-  }
+  arduboy.fillRect(_x, _y, _w, _h, color);
 }
-static void beginAddingRects(void) { drawingHitBoxesIndex = hitBoxesIndex; }
 
-static int tst=0;
+
+static void beginAddingRects(void) { drawingHitBoxesIndex = hitBoxesIndex; }
 
 static void addRect(bool isAlignCenter, float x, float y, float w, float h,
                     Collision *hitCollision) {
@@ -257,14 +229,12 @@ static void addRect(bool isAlignCenter, float x, float y, float w, float h,
   if (hasCollision && isValidHitCoord(x, y)) {
     HitBox hb;
     hb.index = HIT_BOX_INDEX_COLOR_BASE + color;
-    //if(!tst){arduboy.print(hb.index); tst=1;}
     hb.x = x;
     hb.y = y;
     hb.w = w;
     hb.h = h;
     checkHitBox(hitCollision, hb);
     if (color > TRANSPARENT && drawingHitBoxesIndex < MAX_HIT_BOX_COUNT) {
-      //arduboy.print(drawingHitBoxesIndex);arduboy.print(":");arduboy.print(hb.index);arduboy.print(":");arduboy.print(hb.index>>4);arduboy.print(":");arduboy.print(hb.index & 0xF);arduboy.print("\n");
       hitBoxes[drawingHitBoxesIndex] = hb;
       drawingHitBoxesIndex++;
     }
@@ -287,33 +257,9 @@ static void endAddingRects(void) {
   hitBoxesIndex = drawingHitBoxesIndex;
 }
 
-
-void md_drawPixel(float _x, float _y, int8_t color) {
-  /*  Check parameters  */
-  int16_t x = (int16_t)_x, y = (int16_t)_y;
-  if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) return;
-
-  /*  Draw a pixel  */
-  uint8_t *p = arduboy.getBuffer() + x + (y / 8) * WIDTH;
-  uint8_t d = bit(y & 7), c = getColor(color);
-  if (c != INVERT) *p |= d;
-  if (c != WHITE) *p ^= d;
-  /*
-  unsigned char* sBuffer = arduboy.getBuffer();
-  uint8_t row = (uint8_t)y / 8;
-  sBuffer[(row*WIDTH) + (uint8_t)x] |=   _BV((uint8_t)y % 8);
-  */
-}
-
 float clamp(float v, float low, float high) {return fmaxf(low, fminf(v, high));}
 
-static void drawLine(float x, float y, float ox, float oy,
-                     Collision *hitCollision) {
-
-  //drawLine(127,0, -127, 63, &hitCollision);
-  //arduboy.drawLine(x,y,x+ox,y+oy);
-  //return;
-                      
+static void drawLine(float x, float y, float ox, float oy, Collision *hitCollision) {
   float lx = fabsf(ox);
   float ly = fabsf(oy);
   float t = thickness * 1.5f;
@@ -463,7 +409,7 @@ Collision character(char character, float x, float y) {
 }
 
 
-float acc=0;
+float acc=0, vel, mass;
 float x=-99,y=-99;
 int frame=0;
 
@@ -520,6 +466,48 @@ void example_rotate_bar(){
   bar(96,32, 30, acc+(deg*90));
 }
 
+
+void rotate(float*x, float*y, float angle){
+  float ox = *x, oy = *y;
+  *x = ox * cos(angle) - oy * sin(angle); 
+  *y = ox * sin(angle) + oy * cos(angle);
+}
+float rad(int angle){return angle*PI/180;}
+
+void rot_bar(int cx, int cy, int radius, int len, int num, float acc){
+  float an=rad(360/num);
+  for(int i=0; i<num; i++) {
+    float rot = i*an+acc;
+    float ox = radius; float oy = 0;
+    rotate(&ox, &oy, rot);
+    bar(cx+ox, cy+oy, len, rot+rad(90));
+  }
+}
+
+void example_rotate_bar_2(){
+  // Init
+  if(x==-99 && y==-99){x=y=0; barCenterPosRatio = 0.5f;}
+  // update acc
+  x += 0.02f; // speed of circle 1 
+  y -= 0.03f;  // speed of circle 2
+  //
+  rot_bar(32,32, 20,  6, 5, x);
+  rot_bar(96,32, 30, 10, 8, y);
+}
+
+void exmaple_rope(){
+  float mass=0.0055f;
+  int len=40;
+  // Init
+  if(x==-99 && y==-99){acc=rad(45); vel=0; x=y=0;}
+  //
+  vel += -mass * acc;
+  acc += vel;
+  x=len; y=0; 
+  rotate(&x, &y, acc+rad(90));
+  line(64, 0, 64+x, y);
+}
+
 void example_rotate_arc(){
   float deg1 = (PI/180), deg360=PI*2;
   // Init
@@ -557,6 +545,21 @@ void example_draw_chars(){
   if(colRect(&r, LIGHT1)) {arduboy.print("Y");}else{arduboy.print("N");}
 }
 
+void example_boost(){
+  // Init
+  if(x==-99 && y==-99){x=64; y=32; acc=0; color = LIGHT1;}
+  // floor
+  rect(0,59, 128,4);
+  // actor
+  UserInput();
+  acc += 0.25f; if(acc>2)acc=2;
+  y += acc;
+  Collision r = character((frame==0?'a':'b'), x,y);
+  if(colRect(&r, LIGHT1)) {acc=-5;}
+}
+
+
+
 void loop()
 {
   if (!arduboy.nextFrame()) return; 
@@ -564,10 +567,14 @@ void loop()
   hitBoxesIndex = 0;
 
   // Check collision object
-  //example_collision();
+  example_collision();
 
   // Draw rotating bar
-  example_rotate_bar();
+  //example_rotate_bar();
+  //example_rotate_bar_2();
+
+  // Pendulum rope
+  //exmaple_rope();
 
   // Draw rotating circle(arc)
   //example_rotate_arc();
@@ -577,6 +584,9 @@ void loop()
 
   // Draw character
   //example_draw_chars();
+
+  // Jump character
+  //example_boost();
 
   arduboy.display();
 }
